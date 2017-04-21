@@ -10,6 +10,7 @@
 #include <cmath>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 
 using namespace std;
 
@@ -24,7 +25,7 @@ double function_f2(double t, double y1, double y2)
 	return -omega*omega*sin(y1);
 }
 
-vector<double> modified_midpoint(int i, double time, double n_steps, double h_small, double H_big, double y1, double y2 )
+vector<double> modified_midpoint(int i, double time, int n_steps, double h_small, double H_big, double y1, double y2 )
 {
 	int m;
 	vector<double> z1, z2;
@@ -54,22 +55,62 @@ vector<double> modified_midpoint(int i, double time, double n_steps, double h_sm
 
 int main()
 {
-	int i, m;
+	unsigned int i, j, k, m;
 	double H_big, h_small;
-	double n_steps;
+	int n_steps;
 	vector<double> time, temp;
+	vector<double> local_error;
 	vector<double> y1, y2;
 	vector<double> z1, z2;
-	vector<vector<double>> Richardson;
+	vector<vector<double>> Richardson_1, Richardson_2;
 
 	const double start = 0;
 	const double end = 1.5;
+	const double epsilon = 0.0001;
+	const double max_n_steps = 8;
 
-	//modified midpoint method
+	Richardson_1.resize(8);
+	for (i = 0; i < 8; i++)
+		Richardson_1[i].resize(i + 1);
 
-	n_steps = 12;//pocet podintevalov v jednom kroku H
-	H_big = 0.0005;//velkost kroku
-	h_small = H_big / n_steps;
+	Richardson_2.resize(8);
+	for (i = 0; i < 8; i++)
+		Richardson_2[i].resize(i + 1);
+
+	cout.precision(5);
+	cout.setf(std::ios::fixed, std::ios::floatfield);
+
+#pragma region kontrolny vypis
+
+	cout << "initial richardson coefficients" << endl;
+
+	//kontrolny vypis
+	cout << "Richardson 1" << endl;
+	for (j = 0; j < max_n_steps; j++)
+	{
+		for (m = 0; m < j; m++)
+		{
+			cout << Richardson_1[j][m] << "\t";
+		}
+		cout << endl;
+	}
+	cout << endl;
+
+	//kontrolny vypis
+	cout << "Richardson 2" << endl;
+	for (j = 0; j < max_n_steps; j++)
+	{
+		for (m = 0; m < j; m++)
+		{
+			cout << Richardson_2[j][m] << "\t";
+		}
+		cout << endl;
+	}
+	cout << endl;
+
+#pragma endregion
+	
+	H_big = 0.005;//velkost kroku
 
 	i = 0;
 	time.push_back(0);//zaciatok casu
@@ -79,14 +120,90 @@ int main()
 
 	while (time[i] < end)
 	{
+		cout << "----------------------- step " << i + 1 << "-----------------------------------" << endl;
+
+		//max_n_steps urcuje max pocet podintervalov na intervale H
+		for (k = 0; k < max_n_steps; k++)
+		{
+			n_steps = 2 * (k + 1); //pocet podintevalov v jednom kroku H
+			h_small = H_big / n_steps;
+
+			//cout << "# of substeps: " << n_steps << endl;
+
+			//spocitat dalsi krok pomocou modified midpoint rule -> y(i + H) pomocou z(n) a z(n - 1)
+			temp = modified_midpoint(i, time[i], n_steps, h_small, H_big, y1[i], y2[i]);//ak by som priradoval postupne tak by sa funkcia musela vykonat 2x
+			Richardson_1[k][0] = temp[0];
+			Richardson_2[k][0] = temp[1];
+
+			cout << "temp " << temp[0] << "\t" << temp[1] << endl;
+
+			//ak niesom v prvom kroku tak pomocou Richardsona dopocitat aproximacie vyssich radov
+			if (k > 0)
+			{
+				for (j = 0; j < k; j++)
+				{
+					//cout << "nsteps " << n_steps << " / " << (2 * (k - j + 1)) << endl;
+					//cout << "menovatel " << (pow(double(n_steps) / (2 * (k - j)), 2) - 1) << endl;
+					Richardson_1[k][j + 1] = Richardson_1[k][j] + (Richardson_1[k][j] - Richardson_1[k - 1][j]) / (pow(double(n_steps) / (2 * (k - j)), 2) - 1);
+					Richardson_2[k][j + 1] = Richardson_2[k][j] + (Richardson_2[k][j] - Richardson_2[k - 1][j]) / (pow(double(n_steps) / (2 * (k - j)), 2) - 1);
+				}
+
+				//spocitat rozdiely aproximacii
+				local_error.push_back(abs(Richardson_1[k][k] - Richardson_1[k - 1][k - 1]));
+				local_error.push_back(abs(Richardson_2[k][k] - Richardson_2[k - 1][k - 1]));
+
+				//najst najväèšiu chybu
+				sort(local_error.begin(), local_error.end());
+
+				//ked sa dosiahne pozadovana lokalna presnost -> break
+				if (local_error[local_error.size() - 1] < epsilon)
+				{
+					cout << "break-------------------------" << endl;
+					break;
+				}
+			}
+
+#pragma region kontrolne vypissy
+
+			//kontrolny vypis
+			cout << "Richardson 1" << endl;
+			for (j = 0; j < max_n_steps; j++)
+			{
+				for (m = 0; m < j + 1; m++)
+				{
+					if(Richardson_1[j][m] != 0)
+						cout << Richardson_1[j][m] << "\t";
+				}
+				cout << endl;
+			}
+			cout << endl;
+			cout << "Richardson 2" << endl;
+			for (j = 0; j < max_n_steps; j++)
+			{
+				for (m = 0; m < j + 1; m++)
+				{
+					if(Richardson_2[j][m] != 0)
+						cout << Richardson_2[j][m] << "\t";
+				}
+				cout << endl;
+			}
+			cout << endl;
+
+#pragma endregion
+
+		}
+		k--; //k treba o 1 zmensit lebo po skonceni cyklu sa este pricita 1 naviac
 		
-		//spocitat dalsi krok pomocou modified midpoint rule -> y(i + H) pomocou z(n) a z(n - 1)
-		temp = modified_midpoint(i, time[i], n_steps, h_small, H_big, y1[i], y2[i]);//ak by som priradoval postupne tak by sa funkcia musela vykonat 2x
-		y1.push_back(temp[0]);
-		y2.push_back(temp[1]);
+		//priradit novy krok do trajektorie
+		y1.push_back(Richardson_1[k][k]);
+		y2.push_back(Richardson_2[k][k]);
 
 		//posunut sa do dalsieho casoveho kroku
 		time.push_back(time[i] + H_big);;
+
+		//if (i > 100) break;
+
+		cout << "----------------------- end of step " << i + 1 << "------------------------------" << endl;
 
 		i++;
 	}
