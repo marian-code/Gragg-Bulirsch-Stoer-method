@@ -105,8 +105,8 @@ double interpolation(vector< double > y1, vector< double > time, int iter, const
 	//ekvidistantne delenie
 	for (i = 0; i < interpolation_points; i++)
 	{
-		a_i[i] = time[iter - interpolation_points + i + 1];
-		y_i[i] = y1[iter - interpolation_points + i + 1];
+		a_i[i] = time[iter - interpolation_points + i];
+		y_i[i] = y1[iter - interpolation_points + i];
 	}
 
 	//pocitanie dlzky intervalov
@@ -203,6 +203,7 @@ double interpolation(vector< double > y1, vector< double > time, int iter, const
 int main()
 {
 	bool repeat = true;
+	bool reduce_step = false;
 	unsigned int i, j, k, m;
 	unsigned int n_steps;
 	int interpolation_points;
@@ -220,7 +221,7 @@ int main()
 	//const double end = 13;
 	const double epsilon = 1E-14;
 	const double max_n_steps = 8;
-	const double H_max = 0.00005;
+	double H_max = 0.00005;
 	const double absolute_tolerance = epsilon;
 	const double relative_tolerance = epsilon;
 
@@ -238,37 +239,7 @@ int main()
 	cout.precision(13);
 	cout.setf(std::ios::fixed, std::ios::floatfield);
 
-#pragma region kontrolny vypis
-
-	//cout << "initial richardson coefficients" << endl;
-
-	////kontrolny vypis
-	//cout << "Richardson 1" << endl;
-	//for (j = 0; j < max_n_steps; j++)
-	//{
-	//	for (m = 0; m < j; m++)
-	//	{
-	//		cout << Richardson_1[j][m] << "\t";
-	//	}
-	//	cout << endl;
-	//}
-	//cout << endl;
-	//cout << "Richardson 2" << endl;
-	//for (j = 0; j < max_n_steps; j++)
-	//{
-	//	for (m = 0; m < j; m++)
-	//	{
-	//		cout << Richardson_2[j][m] << "\t";
-	//	}
-	//	cout << endl;
-	//}
-	//cout << endl;
-
-	//cout << "repeat " << repeat << endl;
-
-#pragma endregion
-
-	H_big = 0.00005;//velkost kroku
+	H_big = H_max;//velkost kroku
 
 	i = 0;
 	time.push_back(0);//zaciatok casu
@@ -277,10 +248,33 @@ int main()
 	y2.push_back(0);//pocitocna podmienka x´(0)
 
 	//while (time[i] < end)//integrovanie cez urcity cas
-	while(y1[i] > -2*H_big)// hladanie periody
+	while(y1[i] > -3*H_big)// hladanie periody
 	{
 		//cout << "----------------------- step " << i + 1 << "-----------------------------------" << endl;
-		//cout << "stepsize H: " << H_big << endl;
+
+		if (reduce_step == false)
+		{
+			if (y1[i] < 0)
+			{
+				cout << "reducing stepsize" << endl;
+				cout << "time: " << time[i] << endl;
+				cout << "stepsize H: " << H_big << endl;
+
+				time.pop_back();
+				y1.pop_back();
+				y2.pop_back();
+				H_max /= 10000;
+				H_big = H_max;
+				reduce_step = true;
+				i--;
+
+				cout << "after delete: " << endl;
+				cout << "time: " << time[i] << "\t" << "y1: " << y1[i] << endl;
+				cout << "stepsize H: " << H_big << endl << endl;
+
+				continue;
+			}
+		}
 
 		//max_n_steps urcuje max pocet podintervalov na intervale H
 		for (k = 0; k < max_n_steps; k++)
@@ -289,14 +283,10 @@ int main()
 			n_steps = 2 * (k + 1); //pocet podintevalov v jednom kroku H
 			h_small = H_big / n_steps;
 
-			//cout << "# of substeps: " << n_steps << endl;
-
 			//spocitat dalsi krok pomocou modified midpoint rule -> y(i + H) pomocou z(n) a z(n - 1)
 			temp = modified_midpoint(i, time[i], n_steps, h_small, H_big, y1[i], y2[i]);//ak by som priradoval postupne tak by sa funkcia musela vykonat 2x
 			Richardson_1[k][0] = temp[0];
 			Richardson_2[k][0] = temp[1];
-
-			//cout << "temp " << temp[0] << "\t" << temp[1] << endl;
 
 			//ak niesom v prvom kroku tak pomocou Richardsona dopocitat aproximacie vyssich radov
 			if (k > 0)
@@ -321,8 +311,6 @@ int main()
 					local_error += pow(delta[m] / scale[m], 2);
 
 				local_error = sqrt(local_error / 2);
-
-				//cout << "local_error" << local_error << endl;
 
 				//ked sa dosiahne pozadovana lokalna presnost -> break
 				if (local_error <= 1)
@@ -364,9 +352,7 @@ int main()
 		}
 		k--; //k treba o 1 zmensit lebo po skonceni cyklu sa este pricita 1 naviac
 
-		//cout << "repeat " << repeat << endl;
-
-		// repeat = false ked sa v danom kroku nepodarilo pomocou richardsonovej extrapolacie
+		// repeat = true ked sa v danom kroku nepodarilo pomocou richardsonovej extrapolacie
 		//skonvergovat na pozadovanu presnost a je potrebne opakovat krok s inym H
 		if (repeat == false)
 		{
@@ -379,28 +365,22 @@ int main()
 
 			i++;
 		}
-		repeat = true;
 
 		//spocitat velkost noveho kroku H - adaptive stepsize control
 		H_big = H_big*0.98*pow(0.98 / local_error, 1.0 / (2 * k + 1));
 
 		if (H_big > H_max) H_big = H_max;
 
-		H_evolution.push_back(H_big);
+		if (repeat == false) H_evolution.push_back(H_big);
+		repeat = true;
+
+		/*if (reduce_step == true)
+		{
+			cout << "time: " << time[i] << "\t" << "y1: " << y1[i] << endl;
+		}*/
 
 		//cout << "----------------------- end of step " << i + 1 << "------------------------------" << endl;
 	}
-
-	//zistit kolko cisel za 0 sa naslo pravdepodobne cca 3
-	interpolation_points = 0;
-	while (y1[y1.size() - interpolation_points - 1] < 0)
-	{
-		interpolation_points++;
-	}
-	
-	if (interpolation_points < 3) cout << "warning!! to few interpolation points" << endl;
-
-	cout << "perioda kyvadla je: " << 4 * interpolation(y1, time, i, interpolation_points * 2) << endl;
 
 #pragma region zápis na disk
 
@@ -446,7 +426,7 @@ int main()
 	outfile4.setf(std::ios::fixed, std::ios::floatfield);
 
 	outfile4.open("H(t).dat");
-	for (i = 1; i < y1.size(); i++)
+	for (i = 1; i < H_evolution.size(); i++)
 	{
 
 		outfile4 << time[i] << "\t";
@@ -454,7 +434,22 @@ int main()
 	}
 	outfile4.close();
 
+	cout << "succesfully writen to disc!" << endl;
+
 #pragma endregion
+
+	//zistit kolko cisel za 0 sa naslo pravdepodobne cca 3
+	interpolation_points = 0;
+	while (y1[y1.size() - interpolation_points - 1] < 0)
+	{
+		interpolation_points++;
+	}
+	cout << "int points: " << interpolation_points << endl;
+	if (interpolation_points < 3) cout << "warning!! to few interpolation points" << endl;
+
+	cout << "perioda kyvadla je: " << 4 * interpolation(y1, time, i, interpolation_points * 2) << endl;
+
+
 
 	system("PAUSE");
 
